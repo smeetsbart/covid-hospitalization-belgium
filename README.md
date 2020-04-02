@@ -1,6 +1,7 @@
 # covid-hospitalization-belgium
 Analysis script for Belgian COVID hospitalization data.
-NOTE. This is IN NO WAY an accurate predictive model.
+
+NOTE: This is IN NO WAY an accurate predictive model.
 It merely parameterizes the currently observed scaling based on public Belgian hospitalization data.
 
 Dependency:
