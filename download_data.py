@@ -59,8 +59,3 @@ data = np.c_[ np.array(days)+d0, h, r, d, htot, icu  ]
 data = np.array(data, dtype=int)
 header = "Dag,H,R,D,Htot,ICU"
 np.savetxt( 'tally.csv', data, delimiter=',', header=header,fmt='%i')
-
-
-#days = list(entries.keys())
-#deaths = np.cumsum(list( entries[i] for i in days ))
-
