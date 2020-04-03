@@ -235,10 +235,6 @@ pdfname = f'{basename}.pdf'
 pngname = f'{basename}.png'
 plt.savefig(pngname,dpi=300)
 plt.show()
-#os.system(f'pdfcrop {pdfname} {pdfname}')
-#os.system(f'convert -density 300 {pdfname} {pngname}')
-#os.system(f'gwenview {pngname}')
-
 
 
 
