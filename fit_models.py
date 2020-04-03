@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
+import matplotlib
+#matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import scipy.optimize as optimize
+from uncertainties import ufloat
 import numpy as np
+import datetime
 import os
 fit = optimize.curve_fit
-xscale = 'log'
-yscale = 'log'
+import SIRX
+import download_data
+xscale = 'linear'
+yscale = 'linear'
 
 #Models to fit
 def logistic( x, L, k, x0 ):
@@ -22,6 +28,8 @@ def si(  x, N0, k, b ):
 
 def linear( x, a, b):
    return a*x+b
+
+sirm = SIRX.SIRXConfirmedModel()
 
 def do_fit( f, x, y, **kwargs ):
    verbose=kwargs.pop('verbose', True)
@@ -41,76 +49,195 @@ dbase = np.recfromcsv('tally.csv', encoding='UTF-8')
 htotal = dbase['htot']
 hcurr = dbase['h']
 release = dbase['r']
+icu = dbase['icu']
 death = dbase['d']
-days = dbase['dag']
+days = np.array([int(el) for el in dbase['dag']])
 day0 = days[0]
-days -= day0 - 1#Start at day 1, for log fit
+shift = 5
+days -= day0 - shift#Start at day 1, for log fit
+print(f" - Starting day: {day0-shift} March")
+print(f' - Infection start around {day0-shift-7} March')
+
+date_start = datetime.date( 2020,3,day0-shift-7)
 
 d2 = htotal[-1] - 2*htotal[-2] + htotal[-3]
 htotal_ext = htotal[-1] + (htotal[-1]-htotal[-2]) + d2/2.
 
 plog,elog,rsqlog = do_fit( logistic, days, htotal, p0 = ( 2*htotal[-1], 1.0, 25. ) )
-pexp,eexp,rsqexp = do_fit( exp, days[:5], htotal[:5], p0 = ( 2.0, 10, 1. ))
+pexp,eexp,rsqexp = do_fit( exp, days[:3], htotal[:3], p0 = ( 2.0, 10, 1. ))
 pquad, equad, rsqquad = do_fit( quadratic, days, htotal, p0 = (0.,0.5,1.0))
 psi, esi, rsqsi = do_fit( si, days, htotal, bounds = ([ 0., 0., 0. ],[ 1e3, 2.0, 1.0 ] ) )
-pll, ell, rsqll = do_fit( linear, np.log(days[5:]), np.log( htotal[5:] ),p0=( 1.,2. ), name='loglog' )
+pll, ell, rsqll = do_fit( linear, np.log(days[5:-5]), np.log( htotal[5:-5] ),p0=( 1.,2. ), name='power law' )
+pd, ed, rsqd = do_fit( linear, np.log(days[5:-5]), np.log( death[5:-5]),p0=( 1.,2. ), name='power law death' )
+
+tshift = -2*pquad[0]/pquad[1]
+print(f" - tshift = {tshift:1.3f} days")
+
+scaling_factor =20#10pct is hospitalized
+population=11576427#Belgian population
+params = sirm.fit(days,htotal*scaling_factor,maxfev=10000,N=population).params
 
 if xscale == 'log':
-   day_c = np.linspace( days[0]/2, days[-1]*2, 10000)
+   day_c = np.linspace( days[0]/1.2, days[-1]*4, 10000)
 else:
-   day_c = np.linspace( days[0]-4, days[-1]+8, 10000)
+   day_c = np.linspace( days[0], days[-1]+14, 10000)
+
+N = params['N']
+
+ #pl.sca(ax[i])
+t = days
+tswitch = t[-1]
+tt = np.logspace(np.log(t[0]), np.log(day_c[-1]), 1000,base=np.exp(1))
+tt1 = tt[tt<=tswitch]
+tt2 = tt[tt>tswitch]
+result = sirm.SIRX(tt, scaling_factor*htotal[0],
+                   params['eta'],
+                   params['rho'],
+                   params['kappa'],
+                   params['kappa0'],
+                   N,
+                   params['I0_factor'],
+                   )
+X = result[2,:]*N/scaling_factor
+I = result[1,:]*N/scaling_factor
+S = result[0,:]*N/scaling_factor
+Z = result[3,:]*N/scaling_factor
+
+Xshift = np.interp( tt-12, tt, X, left=X[0] )
+Hcurr = (X - Xshift)*0.15
+
+
+residuals = htotal - np.interp( days, tt, X )
+ss_res = np.sum( residuals**2)
+ss_tot = np.sum( (htotal - np.mean(htotal))**2)
+r_sq = 1 - (ss_res/ss_tot)
+print(f" - Fit SIRX                | r^2 = {r_sq:1.5f}")
+print(f" - Susceptible ratio: {S.max()*scaling_factor/population}")
+print(f" - SIR-X plateau: {X.max():1.0f}\n")
+
+tomorrow = days[-1]+1
+
+N_tomorrow = { 'logistic':logistic( tomorrow, *plog)
+             , 'exp':exp( tomorrow, *pexp)
+             , "quadratic":quadratic( tomorrow, *pquad)
+             , "si":si(tomorrow, *psi)
+             , "SIR-X": np.interp( [tomorrow], tt, X )[0]
+             , 'power law':np.exp( linear( np.log(tomorrow), *pll )) }
+
+for modname in N_tomorrow:
+   print(f"Delta N {modname:20} : {int(N_tomorrow[modname])-htotal[-1]}")
+
+alpha = ufloat(params['eta'].value, params['eta'].stderr)
+beta = ufloat(params['rho'].value, params['rho'].stderr)
+k0 = ufloat(params['kappa0'].value,params['kappa0'].stderr)
+k = ufloat(params['kappa'].value, params['kappa'].stderr)
+
+Puf = k0 / (  k+k0)
+
+R0_eff = alpha/( beta + k + k0 )
+
+Q = (k + k0) / (beta + k + k0)
+print("\n")
+
+print("Parameter             & Estimate & Std. Error\\\\")
+print("\\hline")
+print(f"\\mu                   & {pll[0]:1.3f} & {ell[0]:1.3f} \\\\")
+print(f"\\mu_d                 & {pd[0]:1.3f} & {ed[0]:1.3f} \\\\")
+print(f"\\kappa_0              & {k0.n:1.3f} & {k0.s:1.3f} \\\\")
+print(f"\\kappa                & {k.n:1.3f} & {k.s:1.3f} \\\\")
+print(f"$P$                   & {Puf.n:1.3f} & {Puf.s:1.3f} \\\\")
+print(f"$Q$                   & {Q.n:1.3f} & {Q.s:1.3f} \\\\")
+print(f"R_{{0,\\mathrm{{eff}}}}    & {R0_eff.n:1.3f} & {R0_eff.s:1.3f} \\\\")
+print("\\hline")
+print("\n")
+
 
 model_log = logistic( day_c, *plog)
 model_exp = exp( day_c, *pexp)
 model_quad = quadratic( day_c, *pquad)
 model_si = si( day_c, *psi)
 model_ll = np.exp( linear( np.log(day_c), *pll) )
+model_d = np.exp( linear( np.log(day_c),*pd))
 
-tomorrow = days[-1] + 1
-
-N_tomorrow = { 'logistic':logistic( tomorrow, *plog)
-             , 'exp':exp( tomorrow, *pexp)
-             , "quadratic":quadratic( tomorrow, *pquad)
-             , "si":si(tomorrow, *psi)
-             , 'loglog':np.exp( linear( np.log(tomorrow), *pll ))}
-
-for modname in N_tomorrow:
-   print(f"Delta N {modname:20} : {int(N_tomorrow[modname])-htotal[-1]}")
-
-print(f"logistic cross over date: {int( plog[2] )+day0-1}")
-print(f"logistic plateau: {int( plog[0] )}")
-print(f'power law exponent: {pll[0]:1.3f}')
-
-dayticks = range( 0, 28,4)
-lday = [(lab-2+day0)%31+1 for lab in dayticks]
-lmonth = [(lab-2+day0)//31+3 for lab in dayticks]
+dayticks = range( -1, int(day_c[-1])+10,7)
+lday = [(lab-1+day0-shift)%31+1 for lab in dayticks]
+lmonth = [(lab-1+day0-shift)//31+3 for lab in dayticks]
 daylabels = [f"{day}/{month}" for day,month in zip(lday,lmonth)]
 
-fig = plt.figure( figsize=(6,5))
-ax = fig.add_subplot(111)
+date_end   = datetime.date( 2020
+                          , (days[-1]-1+day0-shift)//31+3
+                          , (days[-1]-1+day0-shift)%31+1 )
 
-plt.plot( day_c, model_log, '--k',lw=2, label='Logistic')
-plt.plot( day_c, model_exp,'-', color='gray', label='Exponential')
-plt.plot( day_c, model_ll,'-', color='k', label='Power law')
-plt.plot( day_c, model_si, '-.k', color='gray', label="SI-X", lw=2)
-plt.plot( days, htotal, 'o', label='H+D+R', ms=8, color='C0')
-plt.plot( days, death, 'x', label='D', color='C3',mew=2)
-plt.plot( days, release, '+',mew=3, color='C2', label='R',ms=9)
+fig = plt.figure( figsize=(5,6))
+ax = fig.add_subplot(211)
+black = (0.2,0.2,0.2)
+ax.yaxis.tick_right()
 
-plt.xlabel('Day', fontsize=14)
+weekend = [(14+7*i,16+7*i) for i in range(10)]
+ymax = 1.2*X[-1]
+xlim = [ day_c[0], day_c[-1] ]
+
+if xscale=='linear':
+   for weekendi in weekend:
+      plt.fill_betweenx( [0,ymax]
+                       , [weekendi[0]-day0+shift, weekendi[0]-day0+shift]
+                       , [weekendi[1]-day0+shift, weekendi[1]-day0+shift]
+                       , color=(0.2,0.2,0.5), alpha=0.05 )
+   for day_i in range(dayticks[0],dayticks[-1]):
+      plt.plot([day_i,day_i],[0,ymax],'-k', alpha=0.04,lw=0.5)
+
+plt.plot( day_c, model_ll,'--', color=black, label=f'$\propto t^{{{pll[0]:1.2f}}}$')
+plt.plot( tt, X, '-', color=black, label="$X$", lw=2)
+plt.plot( days, htotal, 'o', label='$H_a$', ms=8, color='C0',mec='None')
+plt.plot( days, release, '+',mew=3, color='C2', label='$R$',ms=9)
+plt.annotate( f"$t_0=$ {date_start}", (0.65,0.05),xycoords = 'axes fraction' )
 plt.xscale(xscale)
 plt.yscale(yscale)
-plt.ylim( 0 if yscale=='linear' else 10, 1.2*model_log.max() )
+plt.ylim( 0, ymax)
 plt.ylabel("N", fontsize=14)
-plt.legend(frameon=False, fontsize=12, loc=0)
+plt.legend(frameon=False, fontsize=12, loc=2, ncol=1)
 if xscale =='linear':
-   ax.set_xticks( [el for el in dayticks],daylabels )
+   plt.xticks( [el for el in dayticks],daylabels )
    ax.set_xticks( range(dayticks[0],dayticks[-1]),minor=True )
-plt.xlim( day_c[0],day_c[-1] )
+plt.xlim( *xlim )
+
+
+ax = fig.add_subplot(212)
+ax.yaxis.tick_right()
+ymax = 1.2*0.15*X[-1]
+if xscale=='linear':
+   for weekendi in weekend:
+      plt.fill_betweenx( [0,ymax]
+                       , [weekendi[0]-day0+shift, weekendi[0]-day0+shift]
+                       , [weekendi[1]-day0+shift, weekendi[1]-day0+shift]
+                       , color=(0.2,0.2,0.5), alpha=0.05 )
+   for day_i in range(dayticks[0],dayticks[-1]):
+      plt.plot([day_i,day_i],[0,ymax],'-k', alpha=0.04,lw=0.5)
+
+plt.plot( tt+3, X*0.15, '-', color=black,lw=2, label='$X_D$ (3 days, 15%)')
+plt.plot( tt, Hcurr, ':', lw=3, color=black, label='$X_{ICU}$ (12 Days, 15%)')
+plt.plot( days, death, 'x', label='$D$', color='C3',mew=2)
+plt.plot( days, icu, '+', mew=3, color='C4', label='ICU', ms=9)
+
+plt.xlabel('Date', fontsize=14)
+plt.xscale(xscale)
+plt.yscale(yscale)
+plt.ylim( 0, 1.2*0.15*X[-1])
+plt.ylabel("N", fontsize=14)
+plt.legend(frameon=False, fontsize=12, loc=2, ncol=1)
+if xscale =='linear':
+   plt.xticks( [el for el in dayticks],daylabels )
+   ax.set_xticks( range(dayticks[0],dayticks[-1]),minor=True )
+plt.xlim( *xlim )
 plt.tight_layout()
-fname = f'fitted_models_{days[-1]+day0-1}.png'
-plt.savefig(fname, dpi=300)
-os.system(f'gwenview {fname}')
+basename = f'fitted_models_{date_end}'
+pdfname = f'{basename}.pdf'
+pngname = f'{basename}.png'
+plt.savefig(pngname,dpi=300)
+plt.show()
+#os.system(f'pdfcrop {pdfname} {pdfname}')
+#os.system(f'convert -density 300 {pdfname} {pngname}')
+#os.system(f'gwenview {pngname}')
 
 
 
