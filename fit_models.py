@@ -73,7 +73,7 @@ pd, ed, rsqd = do_fit( linear, np.log(days[5:-5]), np.log( death[5:-5]),p0=( 1.,
 tshift = -2*pquad[0]/pquad[1]
 print(f" - tshift = {tshift:1.3f} days")
 
-scaling_factor =20#10pct is hospitalized
+scaling_factor =20#pct of infecteds that is hospitalized
 population=11576427#Belgian population
 params = sirm.fit(days,htotal*scaling_factor,maxfev=10000,N=population).params
 
