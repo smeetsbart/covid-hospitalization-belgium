@@ -81,6 +81,7 @@ day_c = np.linspace( days[0], days[-1]+14, 10000)
 Ndshift = 10
 dshifts = list(range(-Ndshift,1))
 diffs = []
+icudiffs = []
 
 for dmin in dshifts:
    xdata = days[:len(days)+dmin]
@@ -106,8 +107,14 @@ for dmin in dshifts:
    S = result[0,:]*N/scaling_factor
    Z = result[3,:]*N/scaling_factor
 
+
+   Xshift = np.interp( tt-12, tt, X, left=X[0] )
+   Hcurr = (X - Xshift)*0.15
+
    ymod = np.interp( days, tt, X)
+   icumod = np.interp( days, tt, Hcurr)
    diff = ( ymod[-1] - htotal[-1] ) / htotal[-1] * 100
+   icudiffs.append( (icumod[-1] - icu[-1] )/icu[-1] * 100 )
    diffs.append(diff)
 
    residuals = htotal - ymod
@@ -116,8 +123,6 @@ for dmin in dshifts:
    r_sq = 1 - (ss_res/ss_tot)
    print(f" - Shift = {-dmin} days, SIRX   | r^2 = {r_sq:1.5f}")
 
-Xshift = np.interp( tt-12, tt, X, left=X[0] )
-Hcurr = (X - Xshift)*0.15
 
 
 tomorrow = days[-1]+1
@@ -238,13 +243,17 @@ if xscale =='linear':
 ax1.set_xlim( *xlim )
 
 xlim = (dshifts[0]-0.5,dshifts[-1]+0.5)
-hlines = [10*i for i in range(8)]
+hlines = [10*i for i in range(9)]
 for hline in hlines:
    ax2.plot( xlim,[hline,hline],'-k', alpha=0.1,lw=0.5)
 
-ax2.plot( dshifts, diffs,marker='o',color=(0.3,0.3,0.3))
+ax2.plot( dshifts, diffs,'-',color='C0',alpha=0.5)
+ax2.plot( dshifts, diffs,marker='o',color='C0',ls='None')
+ax2.plot( dshifts, icudiffs,'-',color='C4',alpha=0.5)
+ax2.plot( dshifts, icudiffs, marker='+', color='C4',ls='None',ms=9,mew=3)
 ax2.set_ylabel("Error (%)", fontsize=14)
-ax2.set_xlabel("Day", fontsize=14)
+ax2.set_xlabel(f"Day (from {date_end})", fontsize=14)
+ax2.set_yticks(hlines[::2])
 ax2.set_xticks(dshifts)
 ax2.set_xlim(xlim)
 
