@@ -75,45 +75,50 @@ print(f" - tshift = {tshift:1.3f} days")
 
 scaling_factor =20#10pct is hospitalized
 population=11576427#Belgian population
-params = sirm.fit(days,htotal*scaling_factor,maxfev=10000,N=population).params
+params_all = []
+day_c = np.linspace( days[0], days[-1]+14, 10000)
 
-if xscale == 'log':
-   day_c = np.linspace( days[0]/1.2, days[-1]*4, 10000)
-else:
-   day_c = np.linspace( days[0], days[-1]+14, 10000)
+Ndshift = 10
+dshifts = list(range(-Ndshift,1))
+diffs = []
 
-N = params['N']
+for dmin in dshifts:
+   xdata = days[:len(days)+dmin]
+   ydata = (htotal*scaling_factor)[:len(days)+dmin]
+   params = sirm.fit(xdata,ydata,maxfev=10000,N=population).params
+   N = params['N']
+   params_all.append(params)
+   t = days
+   tswitch = t[-1]
+   tt = np.logspace(np.log(t[0]), np.log(day_c[-1]), 1000,base=np.exp(1))
+   tt1 = tt[tt<=tswitch]
+   tt2 = tt[tt>tswitch]
+   result = sirm.SIRX(tt, scaling_factor*htotal[0],
+                      params['eta'],
+                      params['rho'],
+                      params['kappa'],
+                      params['kappa0'],
+                      N,
+                      params['I0_factor'],
+                      )
+   X = result[2,:]*N/scaling_factor
+   I = result[1,:]*N/scaling_factor
+   S = result[0,:]*N/scaling_factor
+   Z = result[3,:]*N/scaling_factor
 
- #pl.sca(ax[i])
-t = days
-tswitch = t[-1]
-tt = np.logspace(np.log(t[0]), np.log(day_c[-1]), 1000,base=np.exp(1))
-tt1 = tt[tt<=tswitch]
-tt2 = tt[tt>tswitch]
-result = sirm.SIRX(tt, scaling_factor*htotal[0],
-                   params['eta'],
-                   params['rho'],
-                   params['kappa'],
-                   params['kappa0'],
-                   N,
-                   params['I0_factor'],
-                   )
-X = result[2,:]*N/scaling_factor
-I = result[1,:]*N/scaling_factor
-S = result[0,:]*N/scaling_factor
-Z = result[3,:]*N/scaling_factor
+   ymod = np.interp( days, tt, X)
+   diff = ( ymod[-1] - htotal[-1] ) / htotal[-1] * 100
+   diffs.append(diff)
+
+   residuals = htotal - ymod
+   ss_res = np.sum( residuals**2)
+   ss_tot = np.sum( (htotal - np.mean(htotal))**2)
+   r_sq = 1 - (ss_res/ss_tot)
+   print(f" - Shift = {-dmin} days, SIRX   | r^2 = {r_sq:1.5f}")
 
 Xshift = np.interp( tt-12, tt, X, left=X[0] )
 Hcurr = (X - Xshift)*0.15
 
-
-residuals = htotal - np.interp( days, tt, X )
-ss_res = np.sum( residuals**2)
-ss_tot = np.sum( (htotal - np.mean(htotal))**2)
-r_sq = 1 - (ss_res/ss_tot)
-print(f" - Fit SIRX                | r^2 = {r_sq:1.5f}")
-print(f" - Susceptible ratio: {S.max()*scaling_factor/population}")
-print(f" - SIR-X plateau: {X.max():1.0f}\n")
 
 tomorrow = days[-1]+1
 
@@ -168,10 +173,12 @@ date_end   = datetime.date( 2020
                           , (days[-1]-1+day0-shift)//31+3
                           , (days[-1]-1+day0-shift)%31+1 )
 
-fig = plt.figure( figsize=(5,6))
-ax = fig.add_subplot(211)
+fig = plt.figure( figsize=(5,8))
+
+ax0,ax1,ax2 = fig.subplots(3, 1, gridspec_kw={'height_ratios': [2, 2, 1]})
+
 black = (0.2,0.2,0.2)
-ax.yaxis.tick_right()
+ax0.yaxis.tick_right()
 
 weekend = [(14+7*i,16+7*i) for i in range(10)]
 ymax = 1.2*X[-1]
@@ -179,65 +186,74 @@ xlim = [ day_c[0], day_c[-1] ]
 
 if xscale=='linear':
    for weekendi in weekend:
-      plt.fill_betweenx( [0,ymax]
+      ax0.fill_betweenx( [0,ymax]
                        , [weekendi[0]-day0+shift, weekendi[0]-day0+shift]
                        , [weekendi[1]-day0+shift, weekendi[1]-day0+shift]
                        , color=(0.2,0.2,0.5), alpha=0.05 )
    for day_i in range(dayticks[0],dayticks[-1]):
-      plt.plot([day_i,day_i],[0,ymax],'-k', alpha=0.04,lw=0.5)
+      ax0.plot([day_i,day_i],[0,ymax],'-k', alpha=0.04,lw=0.5)
 
-plt.plot( day_c, model_ll,'--', color=black, label=f'$\propto t^{{{pll[0]:1.2f}}}$')
-plt.plot( tt, X, '-', color=black, label="$X$", lw=2)
-plt.plot( days, htotal, 'o', label='$H_a$', ms=8, color='C0',mec='None')
-plt.plot( days, release, '+',mew=3, color='C2', label='$R$',ms=9)
-plt.annotate( f"$t_0=$ {date_start}", (0.65,0.05),xycoords = 'axes fraction' )
-plt.xscale(xscale)
-plt.yscale(yscale)
-plt.ylim( 0, ymax)
-plt.ylabel("N", fontsize=14)
-plt.legend(frameon=False, fontsize=12, loc=2, ncol=1)
+ax0.plot( day_c, model_ll,'--', color=black, label=f'$\propto t^{{{pll[0]:1.2f}}}$')
+ax0.plot( tt, X, '-', color=black, label="$X$", lw=2)
+ax0.plot( days, htotal, 'o', label='$H_a$', ms=8, color='C0',mec='None')
+ax0.plot( days, release, '+',mew=3, color='C2', label='$R$',ms=9)
+ax0.annotate( f"$t_0=$ {date_start}", (0.65,0.05),xycoords = 'axes fraction' )
+ax0.set_xscale(xscale)
+ax0.set_yscale(yscale)
+ax0.set_ylim( 0, ymax)
+ax0.set_ylabel("N", fontsize=14)
+ax0.legend(frameon=False, fontsize=12, loc=2, ncol=1)
 if xscale =='linear':
-   plt.xticks( [el for el in dayticks],daylabels )
-   ax.set_xticks( range(dayticks[0],dayticks[-1]),minor=True )
-plt.xlim( *xlim )
+   ax0.set_xticks( [el for el in dayticks] )
+   ax0.set_xticklabels(daylabels)
+   ax0.set_xticks( range(dayticks[0],dayticks[-1]),minor=True )
+ax0.set_xlim( *xlim )
 
-
-ax = fig.add_subplot(212)
-ax.yaxis.tick_right()
+ax1.yaxis.tick_right()
 ymax = 1.2*0.15*X[-1]
 if xscale=='linear':
    for weekendi in weekend:
-      plt.fill_betweenx( [0,ymax]
+      ax1.fill_betweenx( [0,ymax]
                        , [weekendi[0]-day0+shift, weekendi[0]-day0+shift]
                        , [weekendi[1]-day0+shift, weekendi[1]-day0+shift]
                        , color=(0.2,0.2,0.5), alpha=0.05 )
    for day_i in range(dayticks[0],dayticks[-1]):
-      plt.plot([day_i,day_i],[0,ymax],'-k', alpha=0.04,lw=0.5)
+      ax1.plot([day_i,day_i],[0,ymax],'-k', alpha=0.04,lw=0.5)
 
-plt.plot( tt+3, X*0.15, '-', color=black,lw=2, label='$X_D$ (3 days, 15%)')
-plt.plot( tt, Hcurr, ':', lw=3, color=black, label='$X_{ICU}$ (12 Days, 15%)')
-plt.plot( days, death, 'x', label='$D$', color='C3',mew=2)
-plt.plot( days, icu, '+', mew=3, color='C4', label='ICU', ms=9)
+ax1.plot( tt+2, X*0.15, '-', color=black,lw=2, label='$X_D$ (2 days, 15%)')
+ax1.plot( tt, Hcurr, ':', lw=3, color=black, label='$X_{ICU}$ (12 Days, 15%)')
+ax1.plot( days, death, 'x', label='$D$', color='C3',mew=2)
+ax1.plot( days, icu, '+', mew=3, color='C4', label='ICU', ms=9)
 
-plt.xlabel('Date', fontsize=14)
-plt.xscale(xscale)
-plt.yscale(yscale)
-plt.ylim( 0, 1.2*0.15*X[-1])
-plt.ylabel("N", fontsize=14)
-plt.legend(frameon=False, fontsize=12, loc=2, ncol=1)
+ax1.set_xlabel('Date', fontsize=14)
+ax1.set_xscale(xscale)
+ax1.set_yscale(yscale)
+ax1.set_ylim( 0, 1.2*0.15*X[-1])
+ax1.set_ylabel("N", fontsize=14)
+ax1.legend(frameon=False, fontsize=12, loc=2, ncol=1)
 if xscale =='linear':
-   plt.xticks( [el for el in dayticks],daylabels )
-   ax.set_xticks( range(dayticks[0],dayticks[-1]),minor=True )
-plt.xlim( *xlim )
+   ax1.set_xticks( [el for el in dayticks] )
+   ax1.set_xticklabels(daylabels)
+   ax1.set_xticks( range(dayticks[0],dayticks[-1]),minor=True )
+ax1.set_xlim( *xlim )
+
+xlim = (dshifts[0]-0.5,dshifts[-1]+0.5)
+hlines = [10*i for i in range(8)]
+for hline in hlines:
+   ax2.plot( xlim,[hline,hline],'-k', alpha=0.1,lw=0.5)
+
+ax2.plot( dshifts, diffs,marker='o',color=(0.3,0.3,0.3))
+ax2.set_ylabel("Error (%)", fontsize=14)
+ax2.set_xlabel("Day", fontsize=14)
+ax2.set_xticks(dshifts)
+ax2.set_xlim(xlim)
+
 plt.tight_layout()
 basename = f'fitted_models_{date_end}'
 pdfname = f'{basename}.pdf'
 pngname = f'{basename}.png'
 plt.savefig(pngname,dpi=300)
 plt.show()
-#os.system(f'pdfcrop {pdfname} {pdfname}')
-#os.system(f'convert -density 300 {pdfname} {pngname}')
-#os.system(f'gwenview {pngname}')
 
 
 
