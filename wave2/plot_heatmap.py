@@ -28,6 +28,7 @@ PICU = np.zeros( ( len(R0),len(IFR) ) )
 RSQ = np.zeros( np.shape(PICU) )
 Q = np.zeros(np.shape(PICU))
 DICU = np.zeros(np.shape(PICU))
+P = np.zeros(np.shape(PICU))
 
 for i,R0i in enumerate(R0):
    for j,IFRi in enumerate(IFR):
@@ -36,16 +37,18 @@ for i,R0i in enumerate(R0):
       RSQ[i,j] = results['rsq']
       Q[i,j] = results['Q'] if results['rsq'] > th_rsq else np.nan
       DICU[i,j] = results['d_peak'] if results['rsq'] > th_rsq else np.nan
+      P[i,j] = results['R0_eff'] if results['rsq'] > th_rsq else np.nan
 
 PICU = np.ma.masked_where(np.isnan(PICU),PICU)
 DICU = np.ma.masked_where(np.isnan(DICU),DICU)
 Q = np.ma.masked_where(np.isnan(Q),Q)
+P = np.ma.masked_where(np.isnan(P),P)
 
 #Figure of Peak ICU occupation
 fig = plt.figure(figsize=(6,5))
 ax=fig.add_subplot(111)
 im = ax.pcolormesh(R0, IFR*100, T(PICU), cmap='RdYlGn_r')
-CS = ax.contour(R0,IFR*100, T(PICU), levels=[1750,2000,2250,2500,2750,3000,3250,3500], colors='k')
+CS = ax.contour(R0,IFR*100, T(PICU), levels=[1500,1750,2000,2250,2500,2750,3000,3250,3500], colors='k')
 ax.clabel(CS, inline=1, fontsize=10,fmt='%1.0f')
 cbar = fig.colorbar(im, ax=ax)
 cbar.set_label("$N_{ICU}$",fontsize=16)
@@ -59,7 +62,7 @@ plt.savefig('heatmap_ICU_r0_ifr.png', dpi=300)
 fig = plt.figure(figsize=(6,5))
 ax=fig.add_subplot(111)
 im = ax.pcolormesh(R0, IFR*100, T(DICU/7.), cmap='RdYlGn_r')
-CS = ax.contour(R0,IFR*100, T(DICU/7.), levels=[1,2,3,4], colors='k')
+CS = ax.contour(R0,IFR*100, T(DICU/7.), levels=[0,1,2,3,4], colors='k')
 ax.clabel(CS, inline=1, fontsize=10,fmt='%1.0f')
 cbar = fig.colorbar(im, ax=ax)
 cbar.set_label("$T_p$ (weeks)",fontsize=16)
@@ -74,10 +77,24 @@ ax=fig.add_subplot(111)
 im = ax.pcolormesh(R0, IFR*100, T(Q), cmap='RdYlGn_r')
 cbar = fig.colorbar(im, ax=ax)
 cbar.set_label("$Q$",fontsize=16)
+CS = ax.contour(R0,IFR*100, T(Q), levels=[0.3,0.4,0.5,0.6,0.7,0.8,0.9], colors='k')
+ax.clabel(CS, inline=1, fontsize=10,fmt='%1.1f')
 ax.set_xlabel( "$R_0$", fontsize=16 )
 ax.set_ylabel( "IFR (%)", fontsize=16)
 plt.tight_layout()
 plt.savefig('heatmap_Q_r0_ifr.png', dpi=300)
+
+fig = plt.figure(figsize=(6,5))
+ax=fig.add_subplot(111)
+im = ax.pcolormesh(R0, IFR*100, T(P), cmap='RdYlGn_r')
+cbar = fig.colorbar(im, ax=ax)
+cbar.set_label("$R_\\mathrm{eff}$",fontsize=16)
+CS = ax.contour(R0,IFR*100, T(P), levels=[1.1,1.2,1.3,1.4,1.5,1.6,1.7], colors='k')
+ax.clabel(CS, inline=1, fontsize=10,fmt='%1.1f')
+ax.set_xlabel( "$R_0$", fontsize=16 )
+ax.set_ylabel( "IFR (%)", fontsize=16)
+plt.tight_layout()
+plt.savefig('heatmap_Reff_r0_ifr.png', dpi=300)
 
 imax,jmax = np.unravel_index(np.argmax(RSQ), np.shape(RSQ))
 #Figure of fit quality
