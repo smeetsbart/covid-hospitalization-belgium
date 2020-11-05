@@ -15,8 +15,8 @@ yscale = 'linear'
 
 settings = \
    { "IFR"           : 0.0057#Infection to fatality ratio. 0.4% is number from WHO
-   , 'R0'            : 4.0#Baseline reproduction number. 6.2 is value from original paper Maier & Brockmann
-   , "t_infectious"  : 7#Amount of days that one is infectious. 8 is value from original paper Maier & Brockmann
+   , 'R0'            : 5.2#Baseline reproduction number. 6.2 is value from original paper Maier & Brockmann
+   , "t_infectious"  : 8#Amount of days that one is infectious. 8 is value from original paper Maier & Brockmann
    , "p_immune"      : 0.5#If you were already infected in previous wave, what is probability of being immune now.
    , 'p_ICU'         : 0.15#Given Hospitalization, chance of ending up in ICU
    , 'time_ICU'      : 14#Average time a patient spends in ICU before release/death/regular hospi
@@ -130,7 +130,7 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
       r_sq = 1 - (ss_res/ss_tot)
 
    peak_icu_tt = np.argmax(Hcurr)
-   tt_peak = tt[peak_icu_tt]
+   tt_peak = (tt+icushift)[peak_icu_tt]
    peak_date = date_start + datetime.timedelta(days=int( tt_peak ))
 
    if verbose:
