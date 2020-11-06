@@ -9,8 +9,8 @@ import pickle
 
 s0 = fit_models.settings
 
-Nj = 60
-Ni = 60
+Nj = 20
+Ni = 20
 
 R0 = np.linspace(1.75,6.25,Ni )
 IFR = np.linspace( 0.001,0.014,Nj )

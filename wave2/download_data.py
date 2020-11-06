@@ -1,10 +1,11 @@
 import json
+import sys
 import numpy as np
 import requests,datetime
 
 dates = []
 
-def date_to_index( datestr, start_date):
+def date_to_index( datestr, start_date ):
    date = [int(el) for el in datestr.split('-')]
    date = datetime.date( *date )
    dates.append(date)
@@ -27,7 +28,11 @@ def load_data( url ):
    f = open(fname(url),'r', encoding='latin-1')
    return json.load(f)
 
-def parse_data( data, entryname, start_date, filter={}):
+def parse_data( data, entryname, start_date, end_date = None, filter={}):
+   if end_date is not None:
+      end_index = ( end_date - start_date ).days
+   else:
+      end_index = sys.maxsize
    entries = {}
    for entry in data:
       proceed = True
@@ -36,7 +41,10 @@ def parse_data( data, entryname, start_date, filter={}):
             proceed = False
          else:
             proceed = proceed and (entry[filterentry] in filter[filterentry])
-      entry['t'] = date_to_index(entry['DATE'], start_date)
+      index = date_to_index(entry['DATE'],start_date)
+      if index > end_index:
+         continue
+      entry['t'] = index
       if proceed:
          entries[entry['t']] = entries.get(entry['t'],0) + entry[entryname]
       else:
@@ -44,7 +52,7 @@ def parse_data( data, entryname, start_date, filter={}):
    entries = fill_zeros( entries )
    return list(entries.keys()), list( entries[i] for i in list(entries.keys()) )
 
-def download_data(start_date, fname = 'tally.csv'):
+def download_data(start_date, end_date = None, fname = 'tally.csv'):
 
    #URLs to pull data in from:
    d_url = "https://epistat.sciensano.be/Data/COVID19BE_MORT.json"
@@ -62,7 +70,7 @@ def download_data(start_date, fname = 'tally.csv'):
       #d = [di for i,di in zip( days_d, np.cumsum(deaths)) if i >= 0]
       #ddict['']
 
-   days_d, deaths = parse_data( load_data(d_url), 'DEATHS', start_date
+   days_d, deaths = parse_data( load_data(d_url), 'DEATHS', start_date, end_date=end_date
                               , filter={})
    d_all = np.cumsum( deaths )
    d = [di for i,di, in zip(days_d,deaths) if i >= 0]
@@ -70,25 +78,25 @@ def download_data(start_date, fname = 'tally.csv'):
    d_all = [di for i,di in zip(days_d, d_all) if i>=0]
    Nd = len(d)
 
-   days_d, dy = parse_data( load_data(d_url), 'DEATHS', start_date
+   days_d, dy = parse_data( load_data(d_url), 'DEATHS', start_date, end_date=end_date
                               , filter={'AGEGROUP':['0-24','25-44']})
    dy = [di for i,di, in zip(days_d,dy) if i >= 0]
    dy = np.cumsum(dy)
    assert( len(dy) == Nd )
 
-   days_d, dm = parse_data( load_data(d_url), 'DEATHS', start_date
+   days_d, dm = parse_data( load_data(d_url), 'DEATHS', start_date, end_date=end_date
                                   , filter={'AGEGROUP':['45-64']})
    dm = [di for i,di, in zip(days_d,dm) if i >= 0]
    dm = np.cumsum(dm)
    assert( len(dm) == Nd)
 
-   days_r, dr = parse_data( load_data(d_url), 'DEATHS', start_date
+   days_r, dr = parse_data( load_data(d_url), 'DEATHS', start_date, end_date=end_date
                                   , filter={'AGEGROUP':['65-74']})
    dr = [di for i,di, in zip(days_d,dr) if i >= 0]
    dr = np.cumsum(dr)
    assert( len(dr) == Nd)
 
-   days_d, do = parse_data( load_data(d_url), 'DEATHS', start_date
+   days_d, do = parse_data( load_data(d_url), 'DEATHS', start_date, end_date=end_date
                                   , filter={'AGEGROUP':['75-84','85+']})
    do = [di for i,di, in zip(days_d,do) if i >= 0]
    do = np.cumsum(do)
@@ -99,17 +107,17 @@ def download_data(start_date, fname = 'tally.csv'):
 
    print(f" - Downloaded json data between {min(dates)} and {max(dates)}")
 
-   days, h = parse_data( hdata, "TOTAL_IN", start_date)
+   days, h = parse_data( hdata, "TOTAL_IN", start_date, end_date=end_date)
    h = [hi for i,hi in zip(days,h) if i >= 0]
 
    assert( len(h)==Nd )
 
-   days, r = parse_data( hdata, "NEW_OUT",start_date)
+   days, r = parse_data( hdata, "NEW_OUT",start_date, end_date=end_date)
    r_all = np.cumsum(r)
    r_all = [ri for i,ri in zip(days, r_all) if i>=0]
    r = [ri for i,ri in zip(days,r) if i >= 0]
 
-   days, icu = parse_data( hdata, "TOTAL_IN_ICU", start_date)
+   days, icu = parse_data( hdata, "TOTAL_IN_ICU", start_date, end_date=end_date)
    icu = [icui for i,icui in zip(days,icu) if i >= 0]
    assert( len(icu) == Nd)
    r = np.cumsum(r)
@@ -128,7 +136,8 @@ def download_data(start_date, fname = 'tally.csv'):
 
 
 if __name__ == "__main__":
-   download_data( datetime.date( 2020,9,15 ) )
+   download_data( datetime.date( 2020,3,15 )
+                , datetime.date( 2020,6,1 ) )
 
 #days = list(entries.keys())
 #deaths = np.cumsum(list( entries[i] for i in days ))

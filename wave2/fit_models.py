@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import matplotlib
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import scipy.optimize as optimize
 from uncertainties import ufloat
@@ -25,11 +25,12 @@ settings = \
    , 'delay_death'   : 14#Average time delay in days between hospitalization and death.
    , "pop"           : 11606426#Total population (Belgium) as of 2020-10-31
    , "start_date"    : datetime.date( 2020, 9, 10)#Start date for wave / epidemy
+   , "end_date"      : datetime.date( 2021, 10, 31)#End date to fetch data from (for wave selection)
    , "proj_date"     : datetime.date( 2020, 12, 25 )#Date to show projection of numbers
    }
 
 def load_data( settings ):
-   download_data.download_data(settings['start_date'])
+   download_data.download_data(settings['start_date'], end_date=settings['end_date'])
    dbase = np.recfromcsv('tally.csv', encoding='UTF-8')
    return dbase
 
@@ -300,7 +301,7 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
       pdfname = f'{basename}.pdf'
       pngname = f'{basename}.png'
       plt.savefig(pngname,dpi=300)
-      #plt.show()
+      plt.show()
 
    return results
 
