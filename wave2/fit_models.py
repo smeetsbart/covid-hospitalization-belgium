@@ -15,11 +15,12 @@ yscale = 'linear'
 
 settings = \
    { "IFR"           : 0.0057#Infection to fatality ratio. 0.4% is number from WHO
-   , 'R0'            : 5.2#Baseline reproduction number. 6.2 is value from original paper Maier & Brockmann
+   , 'R0'            : 4.5#Baseline reproduction number. 6.2 is value from original paper Maier & Brockmann
    , "t_infectious"  : 8#Amount of days that one is infectious. 8 is value from original paper Maier & Brockmann
-   , "p_immune"      : 0.5#If you were already infected in previous wave, what is probability of being immune now.
+   , "p_immune"      : 1.0#If you were already infected in previous wave, what is probability of being immune now.
    , 'p_ICU'         : 0.15#Given Hospitalization, chance of ending up in ICU
    , 'time_ICU'      : 14#Average time a patient spends in ICU before release/death/regular hospi
+   , 'time_H'        : 8.5#Average time a patient spends in the hospital (including the ones who end up in ICU)
    , "delay_ICU"     : 5#Average time a patients spends in regular hospital before transfer to ICU
    , 'delay_death'   : 14#Average time delay in days between hospitalization and death.
    , "pop"           : 11606426#Total population (Belgium) as of 2020-10-31
@@ -111,11 +112,13 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
       S = result[0,:]*N/scaling_factor
       Z = result[3,:]*N/scaling_factor
 
-      Xshift = np.interp( tt-settings['time_ICU'], tt, X, left=X[0] )
-      Hcurr = (X - Xshift)*settings['p_ICU'] + icu[0]
+      Xshift_icu = np.interp( tt-settings['time_ICU'], tt, X, left=X[0] )
+      icucurr_m = (X - Xshift_icu)*settings['p_ICU'] + icu[0]
+      Xshift_h = np.interp( tt - settings['time_H'], tt, X, left=X[0] )
+      hcurr_m = (X- Xshift_h) + hcurr[0]
 
       ymod = np.interp( days, tt, X)
-      icumod = np.interp( days, tt, Hcurr)
+      icumod = np.interp( days, tt, icucurr_m)
       dmod = np.interp( days, tt+dshift, X*dscale )
 
       diff = ( ymod[-1] - htotal[-1] ) / htotal[-1] * 100
@@ -129,9 +132,13 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
       ss_tot = np.sum( (htotal - np.mean(htotal))**2)
       r_sq = 1 - (ss_res/ss_tot)
 
-   peak_icu_tt = np.argmax(Hcurr)
+   peak_icu_tt = np.argmax(icucurr_m)
+   peak_h_tt = np.argmax(hcurr_m)
    tt_peak = (tt+icushift)[peak_icu_tt]
-   peak_date = date_start + datetime.timedelta(days=int( tt_peak ))
+   tthp = tt[peak_h_tt]
+   peak_icu_date = date_start + datetime.timedelta(days=int( tt_peak ))
+   peak_h_date = date_start + datetime.timedelta( days=int( tthp ))
+
 
    if verbose:
       print(f" - Fit SIRX: r^2 = {r_sq:1.5f}")
@@ -146,8 +153,11 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
       print(f" - Projected total wave deaths: {int( np.max(X*dscale) ):,}")
       print(f" - Projected total deaths: {dstart + int( np.max(X*dscale)):,}")
       print(f" - Latest ICU occupancy: {icu[-1]}")
-      print(f" - Projected peak ICU: {int(max(Hcurr))} patients")
-      print(f" - Projected peak Date: {peak_date}")
+      print(f" - Latest H occupancy: {hcurr[-1]}")
+      print(f" - Projected peak ICU: {int(max(icucurr_m))} patients")
+      print(f" - Projected peak ICU Date: {peak_icu_date}")
+      print(f" - Projected peak H: {int(max(hcurr_m))} patients")
+      print(f" - Projected peak H Date: {peak_h_date}")
       print(f" - Estimated immune at {settings['start_date']} : {immune_start*100:1.2f}%")
       print(f" - Projected immune at {settings['proj_date']} : {(X.max()*scaling_factor+dstart/ifr)*settings['p_immune']/settings['pop']*100:1.2f}%")
 
@@ -173,7 +183,7 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
       print("\n")
 
    results = {}
-   results["icu_peak"] = int(max(Hcurr))
+   results["icu_peak"] = int(max(icucurr_m))
    results['Q'] = Q.n
    results['R0_eff'] = R0_eff.n
    results['P'] = Puf.n
@@ -185,9 +195,9 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
    results['d_peak'] =  tt_peak - days[-1]
 
    if do_plot:
-      fig = plt.figure( figsize=(8,6))
+      fig = plt.figure( figsize=(8,9))
 
-      ax0,ax1 = fig.subplots(2, 1, gridspec_kw={'height_ratios': [1,1]})
+      ax0,ax1,ax2 = fig.subplots(3, 1, gridspec_kw={'height_ratios': [1,1,1]})
 
       black = (0.2,0.2,0.2)
       ax0.yaxis.tick_right()
@@ -213,7 +223,7 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
          for day_i in range(dayticks[0],dayticks[-1]):
             ax0.plot([day_i,day_i],[0,ymax],'-k', alpha=0.04,lw=0.5)
 
-      ax0.plot( days, hcurr, marker='o', mfc='None', mec='C0', label='$H$',ls='None', alpha=0.5)
+      #ax0.plot( days, hcurr, marker='o', mfc='None', mec='C0', label='$H$',ls='None', alpha=0.5)
       ax0.plot( tt+dshift, X*dscale, '-.', color=black,lw=2
               , label=f'$X_D$ ($\Delta=${dshift} days, IFR={settings["IFR"]*100:1.2f}%)')
       ax0.plot( days, htotal, 'o', label='$H_a$', ms=8, color='C0',mec='None')
@@ -232,7 +242,7 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
       ax0.set_xlim( *xlim )
 
       ax1.yaxis.tick_right()
-      ymax = 1.2*max(Hcurr)
+      ymax = 1.2*max(icucurr_m)
       if xscale=='linear':
          for weekendi in weekend:
             ax1.fill_betweenx( [0,ymax]
@@ -242,7 +252,7 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
          for day_i in range(dayticks[0],dayticks[-1]):
             ax1.plot([day_i,day_i],[0,ymax],'-k', alpha=0.04,lw=0.5)
 
-      ax1.plot( tt+icushift, Hcurr, ':', lw=3, color=black
+      ax1.plot( tt+icushift, icucurr_m, ':', lw=3, color=black
               , label=f'$X_{{ICU}}$ ($\Delta$={settings["delay_ICU"]} days, t={settings["time_ICU"]} days, p={settings["p_ICU"]*100:1.0f}%)')
       ax1.plot( days, icu, '+', mew=3, color='C4', label='ICU', ms=9)
 
@@ -257,6 +267,33 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
          ax1.set_xticklabels(daylabels)
          ax1.set_xticks( range(dayticks[0],dayticks[-1]),minor=True )
       ax1.set_xlim( *xlim )
+
+      ax2.yaxis.tick_right()
+      ymax = 1.2*max(hcurr_m)
+      if xscale=='linear':
+         for weekendi in weekend:
+            ax2.fill_betweenx( [0,ymax]
+                             , [weekendi[0], weekendi[0]]
+                             , [weekendi[1], weekendi[1]]
+                             , color=(0.2,0.2,0.5), alpha=0.05 )
+         for day_i in range(dayticks[0],dayticks[-1]):
+            ax2.plot([day_i,day_i],[0,ymax],'-k', alpha=0.04,lw=0.5)
+
+      ax2.plot( days, hcurr, marker='o', mfc='None', mec='C0', label='$H$',ls='None', alpha=0.5)
+      ax2.plot( tt, hcurr_m, ':', lw=3, color=black
+              , label=f'$X_{{H}}$ (t={settings["time_H"]} days)')
+
+      ax2.set_xlabel('Date', fontsize=14)
+      ax2.set_xscale(xscale)
+      ax2.set_yscale(yscale)
+      ax2.set_ylim( 0, ymax)
+      ax2.set_ylabel("N", fontsize=14)
+      ax2.legend(frameon=False, fontsize=12, loc=2, ncol=1)
+      if xscale =='linear':
+         ax2.set_xticks( [el for el in dayticks] )
+         ax2.set_xticklabels(daylabels)
+         ax2.set_xticks( range(dayticks[0],dayticks[-1]),minor=True )
+      ax2.set_xlim( *xlim )
 
       plt.tight_layout()
       basename = f'fitted_models_{date_end}'
