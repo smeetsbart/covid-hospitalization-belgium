@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import matplotlib
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import scipy.optimize as optimize
 from uncertainties import ufloat
@@ -15,12 +15,12 @@ yscale = 'linear'
 
 settings = \
    { "IFR"           : 0.0057#Infection to fatality ratio. 0.4% is number from WHO
-   , 'R0'            : 4.5#Baseline reproduction number. 6.2 is value from original paper Maier & Brockmann
+   , 'R0'            : 6.0#Baseline reproduction number. 6.2 is value from original paper Maier & Brockmann
    , "t_infectious"  : 8#Amount of days that one is infectious. 8 is value from original paper Maier & Brockmann
    , "p_immune"      : 1.0#If you were already infected in previous wave, what is probability of being immune now.
    , 'p_ICU'         : 0.15#Given Hospitalization, chance of ending up in ICU
    , 'time_ICU'      : 14#Average time a patient spends in ICU before release/death/regular hospi
-   , 'time_H'        : 8.5#Average time a patient spends in the hospital (including the ones who end up in ICU)
+   , 'time_H'        : 8.0#Average time a patient spends in the hospital (including the ones who end up in ICU)
    , "delay_ICU"     : 5#Average time a patients spends in regular hospital before transfer to ICU
    , 'delay_death'   : 14#Average time delay in days between hospitalization and death.
    , "pop"           : 11606426#Total population (Belgium) as of 2020-10-31
@@ -300,7 +300,7 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
       pdfname = f'{basename}.pdf'
       pngname = f'{basename}.png'
       plt.savefig(pngname,dpi=300)
-      plt.show()
+      #plt.show()
 
    return results
 

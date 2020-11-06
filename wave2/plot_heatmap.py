@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use("Agg")
 import numpy as np
 import matplotlib.pyplot as plt
 import copy
@@ -16,7 +18,7 @@ def smooth_image( image, sigma=0):
 def T(val):
    return np.transpose(val)
 
-th_rsq = 0.98
+th_rsq = 0.99
 
 with open('heatmap_results.pickle','rb') as fob:
    data = pickle.load(fob)
@@ -29,6 +31,7 @@ RSQ = np.zeros( np.shape(PICU) )
 Q = np.zeros(np.shape(PICU))
 DICU = np.zeros(np.shape(PICU))
 P = np.zeros(np.shape(PICU))
+Reff = np.zeros(np.shape(PICU))
 
 for i,R0i in enumerate(R0):
    for j,IFRi in enumerate(IFR):
@@ -37,18 +40,20 @@ for i,R0i in enumerate(R0):
       RSQ[i,j] = results['rsq']
       Q[i,j] = results['Q'] if results['rsq'] > th_rsq else np.nan
       DICU[i,j] = results['d_peak'] if results['rsq'] > th_rsq else np.nan
-      P[i,j] = results['R0_eff'] if results['rsq'] > th_rsq else np.nan
+      Reff[i,j] = results['R0_eff'] if results['rsq'] > th_rsq else np.nan
+      P[i,j] = results['P'] if results['rsq'] > th_rsq else np.nan
 
 PICU = np.ma.masked_where(np.isnan(PICU),PICU)
 DICU = np.ma.masked_where(np.isnan(DICU),DICU)
 Q = np.ma.masked_where(np.isnan(Q),Q)
 P = np.ma.masked_where(np.isnan(P),P)
+Reff = np.ma.masked_where(np.isnan(Reff),Reff)
 
 #Figure of Peak ICU occupation
 fig = plt.figure(figsize=(6,5))
 ax=fig.add_subplot(111)
 im = ax.pcolormesh(R0, IFR*100, T(PICU), cmap='RdYlGn_r')
-CS = ax.contour(R0,IFR*100, T(PICU), levels=[1500,1750,2000,2250,2500,2750,3000,3250,3500], colors='k')
+CS = ax.contour(R0,IFR*100, T(PICU), levels=[1500,1750,2000,2250,2500,2750,3000,3250], colors='k')
 ax.clabel(CS, inline=1, fontsize=10,fmt='%1.0f')
 cbar = fig.colorbar(im, ax=ax)
 cbar.set_label("$N_{ICU}$",fontsize=16)
@@ -86,15 +91,27 @@ plt.savefig('heatmap_Q_r0_ifr.png', dpi=300)
 
 fig = plt.figure(figsize=(6,5))
 ax=fig.add_subplot(111)
-im = ax.pcolormesh(R0, IFR*100, T(P), cmap='RdYlGn_r')
+im = ax.pcolormesh(R0, IFR*100, T(Reff), cmap='RdYlGn_r')
 cbar = fig.colorbar(im, ax=ax)
 cbar.set_label("$R_\\mathrm{eff}$",fontsize=16)
-CS = ax.contour(R0,IFR*100, T(P), levels=[1.1,1.2,1.3,1.4,1.5,1.6,1.7], colors='k')
+CS = ax.contour(R0,IFR*100, T(Reff), levels=[1.1,1.2,1.3,1.4,1.5,1.6,1.7], colors='k')
 ax.clabel(CS, inline=1, fontsize=10,fmt='%1.1f')
 ax.set_xlabel( "$R_0$", fontsize=16 )
 ax.set_ylabel( "IFR (%)", fontsize=16)
 plt.tight_layout()
 plt.savefig('heatmap_Reff_r0_ifr.png', dpi=300)
+
+fig = plt.figure(figsize=(6,5))
+ax=fig.add_subplot(111)
+im = ax.pcolormesh(R0, IFR*100, T(P), cmap='RdYlGn_r')
+cbar = fig.colorbar(im, ax=ax)
+cbar.set_label("$P$",fontsize=16)
+CS = ax.contour(R0,IFR*100, T(P), levels=[0.0025,0.005,0.01,0.02,0.03,0.04], colors='k')
+ax.clabel(CS, inline=1, fontsize=10,fmt='%1.1f')
+ax.set_xlabel( "$R_0$", fontsize=16 )
+ax.set_ylabel( "IFR (%)", fontsize=16)
+plt.tight_layout()
+plt.savefig('heatmap_P_r0_ifr.png', dpi=300)
 
 imax,jmax = np.unravel_index(np.argmax(RSQ), np.shape(RSQ))
 #Figure of fit quality
