@@ -10,24 +10,32 @@ import os
 fit = optimize.curve_fit
 import SIRX
 import download_data
+
 xscale = 'linear'
 yscale = 'linear'
 
 settings = \
-   { "IFR"           : 0.0057#Infection to fatality ratio. 0.4% is number from WHO
-   , 'R0'            : 6.0#Baseline reproduction number. 6.2 is value from original paper Maier & Brockmann
+   { "IFR"           : 0.005#Infection to fatality ratio. 0.4% is number from WHO
+   , 'R0'            : 15#Baseline reproduction number. 6.2 is value from original paper Maier & Brockmann
    , "t_infectious"  : 8#Amount of days that one is infectious. 8 is value from original paper Maier & Brockmann
    , "p_immune"      : 1.0#If you were already infected in previous wave, what is probability of being immune now.
    , 'p_ICU'         : 0.15#Given Hospitalization, chance of ending up in ICU
-   , 'time_ICU'      : 14#Average time a patient spends in ICU before release/death/regular hospi
-   , 'time_H'        : 8.0#Average time a patient spends in the hospital (including the ones who end up in ICU)
-   , "delay_ICU"     : 5#Average time a patients spends in regular hospital before transfer to ICU
+   , 'time_ICU'      : 12#Average time a patient spends in ICU before release/death/regular hospi
+   , 'time_H'        : 8.5#Average time a patient spends in the hospital (including the ones who end up in ICU)
+   , "delay_ICU"     : 4#Average time a patients spends in regular hospital before transfer to ICU
    , 'delay_death'   : 14#Average time delay in days between hospitalization and death.
    , "pop"           : 11606426#Total population (Belgium) as of 2020-10-31
    , "start_date"    : datetime.date( 2020, 9, 10)#Start date for wave / epidemy
    , "end_date"      : datetime.date( 2021, 10, 31)#End date to fetch data from (for wave selection)
-   , "proj_date"     : datetime.date( 2020, 12, 25 )#Date to show projection of numbers
+   , "proj_date"     : datetime.date( 2020, 12, 10 )#Date to show projection of numbers
    }
+
+def compute_rsq( y,x ):
+      residuals = y - x
+      ss_res = np.sum( residuals**2)
+      ss_tot = np.sum( (y - np.mean(y))**2)
+      r_sq = 1 - (ss_res/ss_tot)
+      return r_sq
 
 def load_data( settings ):
    download_data.download_data(settings['start_date'], end_date=settings['end_date'])
@@ -87,7 +95,7 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
       xdata = days[:len(days)+dmin]
       ydata = (htotal*scaling_factor)[:len(days)+dmin]
 
-      params = sirm.fit(xdata,ydata,max_nfev=20000
+      params = sirm.fit(xdata,ydata,max_nfev=10000
                        , N=population
                        , R0=settings['R0']
                        , S0 = S_start
@@ -96,7 +104,7 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
       params_all.append(params)
       t = days
       tswitch = t[-1]
-      tt = np.logspace(np.log(t[0]), np.log(day_c[-1]), 5000,base=np.exp(1))
+      tt = np.logspace(np.log(t[0]), np.log(day_c[-1]), 1000,base=np.exp(1))
       tt1 = tt[tt<=tswitch]
       tt2 = tt[tt>tswitch]
       result = sirm.SIRX(tt, scaling_factor*htotal[0],
@@ -119,19 +127,17 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
       hcurr_m = (X- Xshift_h) + hcurr[0]
 
       ymod = np.interp( days, tt, X)
-      icumod = np.interp( days, tt, icucurr_m)
+      icumod = np.interp( days, tt+icushift, icucurr_m)
       dmod = np.interp( days, tt+dshift, X*dscale )
 
       diff = ( ymod[-1] - htotal[-1] ) / htotal[-1] * 100
       icudiffs.append( (icumod[-1] - icu[-1] )/icu[-1] * 100 )
       ddiffs.append( (dmod[-1] - death[-1]) / death[-1] * 100 )
-
       diffs.append(diff)
 
-      residuals = htotal - ymod
-      ss_res = np.sum( residuals**2)
-      ss_tot = np.sum( (htotal - np.mean(htotal))**2)
-      r_sq = 1 - (ss_res/ss_tot)
+      r_sq = compute_rsq( htotal, ymod)
+      r_sq7 = compute_rsq( htotal[-7:], ymod[-7:])
+      r_sq_icu14 = compute_rsq( icu[:-14:], icumod[:-14:] )
 
    peak_icu_tt = np.argmax(icucurr_m)
    peak_h_tt = np.argmax(hcurr_m)
@@ -139,7 +145,7 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
    tthp = tt[peak_h_tt]
    peak_icu_date = date_start + datetime.timedelta(days=int( tt_peak ))
    peak_h_date = date_start + datetime.timedelta( days=int( tthp ))
-
+   immune_end = (X.max()*scaling_factor+dstart/ifr)*settings['p_immune']/settings['pop']
 
    if verbose:
       print(f" - Fit SIRX: r^2 = {r_sq:1.5f}")
@@ -160,7 +166,7 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
       print(f" - Projected peak H: {int(max(hcurr_m))} patients")
       print(f" - Projected peak H Date: {peak_h_date}")
       print(f" - Estimated immune at {settings['start_date']} : {immune_start*100:1.2f}%")
-      print(f" - Projected immune at {settings['proj_date']} : {(X.max()*scaling_factor+dstart/ifr)*settings['p_immune']/settings['pop']*100:1.2f}%")
+      print(f" - Projected immune at {settings['proj_date']} : {immune_end*100:1.2f}% or {int(immune_end*settings['pop']):,} individuals")
 
    alpha = ufloat(params['eta'].value, params['eta'].stderr if params['eta'].stderr else 0.)
    beta = ufloat(params['rho'].value, params['rho'].stderr if params['rho'].stderr else 0.)
@@ -191,12 +197,14 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
    results['death_wave'] = int(np.max(X*dscale))
    results['death_total'] = dstart + results['death_wave']
    results['immune_before'] = immune_start
-   results['immune_after'] = (X.max()*scaling_factor+dstart/ifr)*settings['p_immune']/settings['pop']
+   results['immune_after'] = immune_end
    results['rsq'] = r_sq
+   results['rsq7'] = r_sq7
+   results['rsqicu'] = r_sq_icu14
    results['d_peak'] =  tt_peak - days[-1]
 
    if do_plot:
-      fig = plt.figure( figsize=(8,9))
+      fig = plt.figure( figsize=(7,9))
 
       ax0,ax1,ax2 = fig.subplots(3, 1, gridspec_kw={'height_ratios': [1,1,1]})
 

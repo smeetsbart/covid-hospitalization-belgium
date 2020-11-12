@@ -88,10 +88,10 @@ class SIRXConfirmedModel:
             params.add('eta',value=eta, vary=False)
             params.add('rho',value=rho, vary=False)
             params.add('S0', value=S0, vary=False)
-            params.add('kappa',value=rho,min=0)
-            params.add('kappa0',value=rho/2,min=0)
+            params.add('kappa',value=rho,min=0,max=1)
+            params.add('kappa0',value=rho/1000,min=0,max=1.)
             #params.add('I0_factor',value=10,min=0.001)
-            params.add('I0_factor',value=10, min=0)
+            params.add('I0_factor',value=2., min=0)
             varyN = N is None
             if varyN:
                 N = 1e7
