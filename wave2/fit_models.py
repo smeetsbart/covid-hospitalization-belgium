@@ -10,31 +10,31 @@ import os
 fit = optimize.curve_fit
 import SIRX
 import download_data
+from settings import base_settings as settings
 
 xscale = 'linear'
 yscale = 'linear'
 
-settings = \
-   { "IFR"           : 0.005#Infection to fatality ratio. 0.4% is number from WHO
-   , 'R0'            : 15#Baseline reproduction number. 6.2 is value from original paper Maier & Brockmann
-   , "t_infectious"  : 8#Amount of days that one is infectious. 8 is value from original paper Maier & Brockmann
-   , "p_immune"      : 1.0#If you were already infected in previous wave, what is probability of being immune now.
-   , 'p_ICU'         : 0.15#Given Hospitalization, chance of ending up in ICU
-   , 'time_ICU'      : 12#Average time a patient spends in ICU before release/death/regular hospi
-   , 'time_H'        : 8.5#Average time a patient spends in the hospital (including the ones who end up in ICU)
-   , "delay_ICU"     : 4#Average time a patients spends in regular hospital before transfer to ICU
-   , 'delay_death'   : 14#Average time delay in days between hospitalization and death.
-   , "pop"           : 11606426#Total population (Belgium) as of 2020-10-31
-   , "start_date"    : datetime.date( 2020, 9, 10)#Start date for wave / epidemy
-   , "end_date"      : datetime.date( 2021, 10, 31)#End date to fetch data from (for wave selection)
-   , "proj_date"     : datetime.date( 2020, 12, 10 )#Date to show projection of numbers
-   }
+#Some info:
+#Average incubation time is about 5 days: https://www.who.int/docs/default-source/coronaviruse/situation-reports/20200402-sitrep-73-covid-19.pdf
+#Time from infection to hospitalization is also about 5 days: https://www.medrxiv.org/content/10.1101/2020.07.18.20156307v1
+#This leads to about 10 days between actual infections and the time-frame of these simulations, which work in 'hospitalization time'
+
+
 
 def compute_rsq( y,x ):
       residuals = y - x
       ss_res = np.sum( residuals**2)
       ss_tot = np.sum( (y - np.mean(y))**2)
       r_sq = 1 - (ss_res/ss_tot)
+
+      #To plot the residuals:
+      #plt.plot( range(len(residuals)),[0. for _ in residuals],color='k',ls='--')
+      #plt.plot( residuals,'o' )
+      #plt.ylabel('$H_a - H_{a,m}$',fontsize=16)
+      #plt.xlabel(f"Day (since {settings['start_date']})",fontsize=16)
+      #plt.show()
+
       return r_sq
 
 def load_data( settings ):
@@ -146,6 +146,9 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
    peak_icu_date = date_start + datetime.timedelta(days=int( tt_peak ))
    peak_h_date = date_start + datetime.timedelta( days=int( tthp ))
    immune_end = (X.max()*scaling_factor+dstart/ifr)*settings['p_immune']/settings['pop']
+   t_peak_infected = tt[np.argmax( I )] - 10
+   n_infected_today = np.interp( [days[-1]], tt-10, I*scaling_factor )
+   date_peak_infected = date_start + datetime.timedelta( days=int( t_peak_infected ))
 
    if verbose:
       print(f" - Fit SIRX: r^2 = {r_sq:1.5f}")
@@ -155,6 +158,8 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
       print(f" - Deaths at start of wave: {dstart:,}")
       print(f" - Susceptible population: {int(S_start*population):,}")
       print(f" - Peak infected number this wave: {int( I.max()*scaling_factor ):,}")
+      print(f" - Date peak infecteds: {date_peak_infected}")
+      print(f" - Number of infecteds at {date_end}: {int( n_infected_today):,}")
       print(f" - Total infecteds this wave {int(X.max()*scaling_factor):,} ")
       print(f" - Total infecteds: {int(X.max()*scaling_factor+dstart/ifr):,}")
       print(f" - Projected total wave deaths: {int( np.max(X*dscale) ):,}")
@@ -202,6 +207,16 @@ def fit_model( dbase, settings, do_plot=False, verbose=False, print_table=False 
    results['rsq7'] = r_sq7
    results['rsqicu'] = r_sq_icu14
    results['d_peak'] =  tt_peak - days[-1]
+   results['eta'] = params['eta']
+   results['rho'] = params['rho']
+   results['kappa'] = params['kappa']
+   results['kappa0'] = params['kappa0']
+   results['N'] = N
+   results['I0_factor'] = params['I0_factor']
+   results['S0'] = 1-immune_start
+   results['Sf'] = 1-immune_end
+   results['X0'] = scaling_factor*htotal[0]/N
+   results['scaling_factor'] = scaling_factor
 
    if do_plot:
       fig = plt.figure( figsize=(7,9))
