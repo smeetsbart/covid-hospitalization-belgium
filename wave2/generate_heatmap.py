@@ -9,10 +9,10 @@ import pickle
 
 s0 = fit_models.settings
 
-Nj = 101
-Ni = 101
+Nj = 201
+Ni = 201
 
-R0 = np.linspace(2.0,15.0,Ni )
+R0 = np.linspace(2.0,6.5,Ni )
 IFR = np.linspace( 0.002,0.014,Nj )
 
 PICU = np.zeros( ( len(R0),len(IFR) ) )
